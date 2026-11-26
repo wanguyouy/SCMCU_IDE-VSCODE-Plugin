@@ -93,7 +93,9 @@ def main():
     writer_lib = (os.environ.get('SCMCU_WRITER_LIB') or
                   _pick_first(r'F:/Work/SCMCU_Writer_V9.01.16/library',
                               r'C:/Program Files (x86)/SCMCU_Writer_V9.01.16/library',
-                              r'C:/Program Files/SCMCU_Writer_V9.01.16/library'))
+                              r'C:/Program Files/SCMCU_Writer_V9.01.16/library',
+                              r'C:/Program Files (x86)/SCMCU_Writer_V9.01.16/SCMCU_Writer_V9.01.16/library'
+                              ))
     for i, a in enumerate(sys.argv):
         if a == '--writer-lib' and i + 1 < len(sys.argv):
             writer_lib = sys.argv[i + 1]

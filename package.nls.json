@@ -1,0 +1,36 @@
+
+{
+    "extension.displayName": "SCMCU IDE (SC8 Series)",
+    "extension.description": "Compile SC8F/SC8P series MCU projects in VS Code, configure hardware options, and generate .scx programming files using the SCMCU_IDE toolchain.",
+
+    "command.build.title": "SCMCU: Build (Generate .hex + .scx)",
+    "command.buildAndFlash.title": "SCMCU: Build and Flash",
+    "command.flash.title": "SCMCU: Flash (Without Building)",
+    "command.hardwareOptions.title": "SCMCU: Hardware Options",
+    "command.selectChip.title": "SCMCU: Select Chip Model",
+    "command.configureCompiler.title": "SCMCU: Configure Compiler Directory",
+    "command.detectCompiler.title": "SCMCU: Detect Compiler Automatically",
+    "command.manageSources.title": "SCMCU: Source File Manager",
+    "command.setDevice.title": "SCMCU: Set Chip Model (Without .scw)",
+    "command.setConfigWords.title": "SCMCU: Set Configuration Words (Without .scw)",
+    "command.startup.title": "SCMCU: Startup",
+    "command.fixConfigWords.title": "SCMCU: Normalize Configuration Words",
+
+    "configuration.title": "SCMCU",
+
+    "configuration.compilerPath.description": "Path to the SCMCU_IDE data\\bin directory (containing picc.exe). Automatically detected when empty.",
+    "configuration.idePath.description": "SCMCU_IDE installation root directory (containing the mcu\\config directory). Automatically detected when empty.",
+    "configuration.buildDir.description": "Build output directory (relative to the project root).",
+    "configuration.outputName.description": "Output file name without extension. Generates <name>.hex and <name>.scx.",
+    "configuration.sourceDirs.description": "C source file directories (relative to the project root; empty string = project root). Bare SourceFile names in .scw are searched in this order, then in the project root and common directories (src/source).",
+    "configuration.includeDirs.description": "Header file include directories (relative to the project root; empty string = project root). These directories are added to -I during compilation.",
+    "configuration.device.description": "Chip model used when compiling without a .scw project file (e.g. SC8F052A04). When empty, compiling without .scw will report a configuration error.",
+    "configuration.configWords.description": "The four configuration words used when compiling without .scw (hexadecimal strings, e.g. [\"0x1FFF\",\"0x3FFF\",\"0x3FFF\",\"0x3FFF\"]). When empty, the chip's default unprogrammed configuration words are used. A warning is shown during compilation; verify hardware options before flashing.",
+    "configuration.sourceFiles.description": "Source file list used when compiling without .scw (relative to the project root; order matters because it determines compilation order). An empty array automatically scans all .c/.asm/.s files in the project. A non-empty array compiles only the listed files in order. Manage this list using the Source File Manager panel. Takes precedence over automatic scanning.",
+    "configuration.noScwBehavior.description": "Behavior when no .scw file is found. prompt = ask; load = load directly; skip = do not load. The dialog options Remember and Load / Remember and Don't Load are saved to this setting.",
+    "configuration.noScwBehavior.prompt": "When opening a workspace with no .scw file, ask whether to load the extension each time.",
+    "configuration.noScwBehavior.load": "Do not ask again. Load the extension directly (without .scw mode).",
+    "configuration.noScwBehavior.skip": "Do not ask again and do not load the extension (treat as a non-SCMCU project).",
+    "configuration.writerPath.description": "SCMCU Writer (programmer host software) installation directory, e.g. F:/Work/SCMCU_Writer_V9.01.16. When empty, automatically scan drive root directories for SCMCU_Writer* folders.",
+    "configuration.flashCount.description": "Maximum offline programming count (WriterCount; 0 = unlimited, default 0). A value of 0 allows unlimited programming. A positive integer limits how many times the programmer can flash this firmware (for production over-programming prevention). Note: this is not the number of chips to program; it is the maximum number of programming operations allowed for this firmware."
+}

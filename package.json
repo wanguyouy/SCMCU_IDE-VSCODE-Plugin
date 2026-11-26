@@ -1,14 +1,14 @@
 {
   "name": "scmcu-vscode",
-  "displayName": "SCMCU IDE (SC8 系列)",
-  "description": "在 VS Code 中编译 SC8F/SC8P 系列单片机工程、配置硬件选项、生成 .scx 烧录文件（基于 SCMCU_IDE 工具链）",
+  "displayName": "%extension.displayName%",
+  "description": "%extension.description%",
   "version": "0.9.10",
   "publisher": "local",
   "license": "MIT",
   "icon": "images/icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/2blaowang/SCMCU_IDE-VSCODE-Plugin.git"
+    "url": "https://github.com/YoussefMostafaMohammed/SCMCU_IDE-VSCODE-Plugin.git"
   },
   "engines": {
     "vscode": "^1.85.0"
@@ -43,56 +43,56 @@
     "commands": [
       {
         "command": "scmcu.build",
-        "title": "SCMCU: 编译 (生成 .hex + .scx)",
+        "title": "%command.build.title%",
         "icon": "$(debug-start)"
       },
       {
         "command": "scmcu.buildAndFlash",
-        "title": "SCMCU: 一键编译下载",
+        "title": "%command.buildAndFlash.title%",
         "icon": "$(zap)"
       },
       {
         "command": "scmcu.flash",
-        "title": "SCMCU: 只下载（不编译）",
+        "title": "%command.flash.title%",
         "icon": "$(cloud-download)"
       },
       {
         "command": "scmcu.hardwareOptions",
-        "title": "SCMCU: 芯片设置",
+        "title": "%command.hardwareOptions.title%",
         "icon": "$(settings-gear)"
       },
       {
         "command": "scmcu.selectChip",
-        "title": "SCMCU: 选择芯片型号"
+        "title": "%command.selectChip.title%"
       },
       {
         "command": "scmcu.configureCompiler",
-        "title": "SCMCU: 配置编译器目录"
+        "title": "%command.configureCompiler.title%"
       },
       {
         "command": "scmcu.detectCompiler",
-        "title": "SCMCU: 自动检测编译器"
+        "title": "%command.detectCompiler.title%"
       },
       {
         "command": "scmcu.manageSources",
-        "title": "SCMCU: 源文件管理",
+        "title": "%command.manageSources.title%",
         "icon": "$(file-directory)"
       },
       {
         "command": "scmcu.setDevice",
-        "title": "SCMCU: 设置芯片型号 (脱离 .scw)"
+        "title": "%command.setDevice.title%"
       },
       {
         "command": "scmcu.setConfigWords",
-        "title": "SCMCU: 设置配置字 (脱离 .scw)"
+        "title": "%command.setConfigWords.title%"
       },
       {
         "command": "scmcu.startup",
-        "title": "SCMCU: 启动"
+        "title": "%command.startup.title%"
       },
       {
         "command": "scmcu.fixConfigWords",
-        "title": "SCMCU: 规范化配置字"
+        "title": "%command.fixConfigWords.title%"
       }
     ],
     "menus": {
@@ -145,27 +145,27 @@
       ]
     },
     "configuration": {
-      "title": "SCMCU",
+      "title": "%configuration.title%",
       "properties": {
         "scmcu.compilerPath": {
           "type": "string",
           "default": "",
-          "description": "SCMCU_IDE 的 data\\bin 目录路径（含 picc.exe）。留空时自动检测。"
+          "description": "%configuration.compilerPath.description%"
         },
         "scmcu.idePath": {
           "type": "string",
           "default": "",
-          "description": "SCMCU_IDE 安装根目录（含 mcu\\config 目录）。留空时自动检测。"
+          "description": "%configuration.idePath.description%"
         },
         "scmcu.buildDir": {
           "type": "string",
           "default": "build",
-          "description": "编译输出目录（相对工程根目录）。"
+          "description": "%configuration.buildDir.description%"
         },
         "scmcu.outputName": {
           "type": "string",
           "default": "SCMCU_Project",
-          "description": "编译产物文件名（不含扩展名），生成 <name>.hex 和 <name>.scx。"
+          "description": "%configuration.outputName.description%"
         },
         "scmcu.sourceDirs": {
           "type": "array",
@@ -175,7 +175,7 @@
           "default": [
             "src"
           ],
-          "description": "C 源文件目录（相对工程根目录；空字符串 = 根目录）。.scw 里的 SourceFile 裸名将按此顺序查找，找不到再找根目录和常见目录(src/source)。"
+          "description": "%configuration.sourceDirs.description%"
         },
         "scmcu.includeDirs": {
           "type": "array",
@@ -185,12 +185,12 @@
           "default": [
             "inc"
           ],
-          "description": "头文件 include 目录（相对工程根目录；空字符串 = 根目录）。编译时会将这些目录加入 -I。"
+          "description": "%configuration.includeDirs.description%"
         },
         "scmcu.device": {
           "type": "string",
           "default": "",
-          "description": "脱离 .scw 工程文件编译时使用的芯片型号（如 SC8F052A04）。留空则「脱离 .scw」编译报错提示配置。"
+          "description": "%configuration.device.description%"
         },
         "scmcu.configWords": {
           "type": "array",
@@ -198,7 +198,7 @@
             "type": "string"
           },
           "default": [],
-          "description": "脱离 .scw 编译时使用的 4 个配置字（十六进制字符串，如 [\"0x1FFF\",\"0x3FFF\",\"0x3FFF\",\"0x3FFF\"]）。留空则用芯片默认未编程配置字（编译时给出警告，烧录前请核对硬件选项）。"
+          "description": "%configuration.configWords.description%"
         },
         "scmcu.sourceFiles": {
           "type": "array",
@@ -206,7 +206,7 @@
             "type": "string"
           },
           "default": [],
-          "description": "脱离 .scw 编译时使用的源文件清单（相对工程根目录，顺序敏感——即编译顺序）。空数组=自动扫描工程下所有 .c/.asm/.s；非空=使用此列表（按顺序编译），可用「源文件管理」面板维护。优先于自动扫描。"
+          "description": "%configuration.sourceFiles.description%"
         },
         "scmcu.noScwBehavior": {
           "type": "string",
@@ -217,21 +217,21 @@
           ],
           "default": "prompt",
           "enumDescriptions": [
-            "每次打开找不到 .scw 的工作区时弹窗询问是否加载插件",
-            "不再弹窗，直接加载插件（脱离 .scw 模式）",
-            "不再弹窗，且不加载插件（视为非 SCMCU 工程）"
+            "%configuration.noScwBehavior.prompt%",
+            "%configuration.noScwBehavior.load%",
+            "%configuration.noScwBehavior.skip%"
           ],
-          "description": "找不到 .scw 文件时的行为。prompt=弹窗询问；load=直接加载；skip=不加载。弹窗中的「记住并加载 / 记住并不加载」会写入此项。"
+          "description": "%configuration.noScwBehavior.description%"
         },
         "scmcu.writerPath": {
           "type": "string",
           "default": "",
-          "description": "SCMCU Writer（编程器上位机）安装目录，如 F:/Work/SCMCU_Writer_V9.01.16。留空时自动扫描盘符根目录下 SCMCU_Writer* 目录。"
+          "description": "%configuration.writerPath.description%"
         },
         "scmcu.flashCount": {
           "type": "number",
           "default": 0,
-          "description": "脱机烧写次数上限（WriterCount，0=无限，默认0）。0 表示编程器可不限次数烧录；设为正整数则限制编程器对该固件的可烧录次数（量产防超烧用）。注意：此值不是“烧录片数”，而是“该固件最多能被烧多少次”。"
+          "description": "%configuration.flashCount.description%"
         }
       }
     }
@@ -241,7 +241,7 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "test": "node test/configWords.regression.js && node test/programmer.regression.js",
-    "package": "vsce package --allow-missing-repository",
+    "package": "npm run build:helper && vsce package --allow-missing-repository",
     "build:helper": "python flash/build_helper.py"
   },
   "devDependencies": {

@@ -82,10 +82,10 @@ export async function flashIce6(
     channel: vscode.OutputChannel
 ): Promise<FlashResult> {
     if (!fs.existsSync(hexPath)) {
-        return { ok: false, message: 'HEX 固件文件不存在: ' + hexPath };
+        return { ok: false, message: vscode.l10n.t('HEX firmware file not found: {0}', hexPath) };
     }
     if (!fs.existsSync(iceScript)) {
-        return { ok: false, message: '缺少 ICE6 下载脚本: ' + iceScript + '（插件安装不完整）' };
+        return { ok: false, message: vscode.l10n.t('The CMS-ICE6 programming script is missing: {0} (the extension installation may be incomplete).', iceScript) };
     }
     const pyInfo = resolvePython(iceScript);
     const py = pyInfo.exe;
@@ -97,18 +97,25 @@ export async function flashIce6(
     // 进度只占一行：脚本不发逐档进度行，而是用 @@P 标记报「第几段/共多少」，
     // 这里解析后写进底栏状态条（一行滚动），输出面板每个步骤只留一行结果。
     const item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-    item.name = 'SCMCU 下载进度';
-    item.text = '$(sync~spin) SCMCU 下载…';
+    item.name = vscode.l10n.t('SCMCU programming progress');
+    item.text = vscode.l10n.t('$(sync~spin) SCMCU Programming...');
     item.show();
 
     return new Promise<FlashResult>((resolve) => {
         let errText = '';
         let pending = '';
         let child;
+        const progressLabels: Record<string, string> = {
+            '擦除': vscode.l10n.t('Erasing'),
+            '下载': vscode.l10n.t('Programming'),
+            '补烧': vscode.l10n.t('Retry programming'),
+            '校验': vscode.l10n.t('Verifying'),
+            '复验': vscode.l10n.t('Rechecking'),
+        };
         const handleLine = (line: string) => {
             if (line.startsWith('@@P\t')) {
                 const [, label, done, total] = line.split('\t');
-                if (label && done && total) item.text = `$(sync~spin) ${label} ${done}/${total}`;
+                if (label && done && total) item.text = `$(sync~spin) ${progressLabels[label] || label} ${done}/${total}`;
                 return;
             }
             channel.appendLine(line);
@@ -120,7 +127,10 @@ export async function flashIce6(
             });
         } catch (e: any) {
             item.dispose();
-            resolve({ ok: false, message: '无法启动下载运行时（' + py + '）: ' + e.message });
+            resolve({
+                ok: false,
+                message: vscode.l10n.t('Unable to start the programming runtime ({0}): {1}', py, e.message),
+            });
             return;
         }
         const outDec = makeFlashDecoder();
@@ -138,8 +148,8 @@ export async function flashIce6(
         child.on('error', (e) => {
             item.dispose();
             const msg = pyInfo.bundled
-                ? '内置下载运行时启动失败（可能被杀毒软件拦截，或扩展目录不完整）: ' + e.message
-                : '无法启动 Python（请确认已安装并加入 PATH，或设置 SCMCU_BUILD_PY）: ' + e.message;
+                ? vscode.l10n.t('The bundled programming runtime failed to start (it may be blocked by antivirus or the extension installation may be incomplete): {0}', e.message)
+                : vscode.l10n.t('Unable to start Python (install it and add it to PATH, or set SCMCU_BUILD_PY): {0}', e.message);
             resolve({ ok: false, message: msg });
         });
         child.on('close', (code) => {
@@ -150,10 +160,13 @@ export async function flashIce6(
             } catch (e) { /* 忽略末尾解码异常 */ }
             channel.appendLine('');
             if (code === 0) {
-                resolve({ ok: true, message: 'CMS-ICE6 下载完成' });
+                resolve({ ok: true, message: vscode.l10n.t('Programming completed') });
             } else {
                 const msg = errText.trim();
-                resolve({ ok: false, message: msg || `ICE6 下载脚本异常退出（代码 ${code}）` });
+                resolve({
+                    ok: false,
+                    message: msg || vscode.l10n.t('CMS-ICE6 programming script exited unexpectedly (code {0}).', String(code)),
+                });
             }
         });
     });
@@ -170,7 +183,7 @@ export async function flashScx(
     iceScript?: string      // flash/ice6_flash.py 绝对路径
 ): Promise<FlashResult> {
     if (!fs.existsSync(scxPath) && !(hexPath && fs.existsSync(hexPath))) {
-        return { ok: false, message: '固件文件不存在: ' + scxPath };
+        return { ok: false, message: vscode.l10n.t('Firmware file not found: {0}', scxPath) };
     }
     const devs = await detectProgrammers();
     const normal = devs.find((d) => d.kind === 'writer' && d.mode !== 'bootloader');
@@ -180,24 +193,35 @@ export async function flashScx(
     const ice = devs.find((d) => d.kind === 'ice');
     if (ice && !normal) {
         if (!hexPath || !iceScript) {
-            return { ok: false, message: 'CMS-ICE6 下载需要 HEX 固件路径与下载脚本（插件内部错误）' };
+            return { ok: false, message: vscode.l10n.t('CMS-ICE6 programming requires a HEX firmware path and the programming script (internal extension error).') };
         }
-        channel.appendLine(`[SCMCU] 检测到 ${ice.name} (VID 0x${ice.vidHex}/PID 0x${ice.pidHex})`);
+        channel.appendLine(vscode.l10n.t(
+            '[SCMCU] Detected programmer: {0} (VID 0x{1}/PID 0x{2})',
+            ice.name, ice.vidHex, ice.pidHex
+        ));
         return flashIce6(hexPath, iceScript, channel);
     }
     const writer = findWriterDir();
     if (!writer) {
-        return { ok: false, message: '未找到 SCMCU Writer 安装目录。请安装 SCMCU Writer，或在设置 scmcu.writerPath 中指定（需含 library/Writer.Core.dll 与 data/database.db）' };
+        return {
+            ok: false,
+            message: vscode.l10n.t(
+                'SCMCU Writer installation directory was not found. Install SCMCU Writer or set scmcu.writerPath in Settings. The directory must contain library/Writer.Core.dll and data/database.db.'
+            ),
+        };
     }
     if (!fs.existsSync(helperExe)) {
-        return { ok: false, message: '缺少烧录助手程序: ' + helperExe + '（插件安装不完整）' };
+        return {
+            ok: false,
+            message: vscode.l10n.t('The flash helper program is missing: {0} (the extension installation may be incomplete).', helperExe),
+        };
     }
     if (!normal) {
         return {
             ok: false,
             message: devs.length > 0
-                ? '检测到的编程器处于升级(bootloader)模式，请先用 SCMCU Writer 的升级功能恢复到正常模式'
-                : '未检测到 SCMCU 编程器或 ICE 仿真器（USB VID 0x1209 / 0x0925）。请连接设备后重试',
+                ? vscode.l10n.t('The connected programmer is in bootloader mode. Use the firmware upgrade function in SCMCU Writer to restore normal mode.')
+                : vscode.l10n.t('No SCMCU programmer or CMS-ICE6 simulator was detected (USB VID 0x1209 / 0x0925). Connect a device and try again.'),
         };
     }
 
@@ -206,9 +230,12 @@ export async function flashScx(
     if (count > 0) args.push('--count', String(count));
     if (probe) args.push('--probe');
 
-    channel.appendLine(`[SCMCU] 烧录助手: ${path.basename(helperExe)}  编程器: ${normal.name} (PID 0x${normal.pidHex})`);
-    channel.appendLine(`[SCMCU] 固件: ${scxPath}   Writer: ${writer}`);
-    channel.appendLine(`[SCMCU] ${probe ? '—— 探测模式（不烧录）——' : '—— 开始下载 ——'}`);
+    channel.appendLine(vscode.l10n.t(
+        '[SCMCU] Flash helper: {0}  Programmer: {1} (PID 0x{2})',
+        path.basename(helperExe), normal.name, normal.pidHex
+    ));
+    channel.appendLine(vscode.l10n.t('[SCMCU] Firmware: {0}  Writer: {1}', scxPath, writer));
+    channel.appendLine(vscode.l10n.t(probe ? '[SCMCU] -- Probe mode (no programming) --' : '[SCMCU] -- Starting programming --'));
 
     return new Promise<FlashResult>((resolve) => {
         let errText = '';
@@ -220,15 +247,26 @@ export async function flashScx(
             errText += s;
             channel.append(s);
         });
-        child.on('error', (e) => resolve({ ok: false, message: '无法启动烧录助手: ' + e.message }));
+        child.on('error', (e) => resolve({
+            ok: false,
+            message: vscode.l10n.t('Unable to start the flash helper: {0}', e.message),
+        }));
         child.on('close', (code) => {
             try { channel.append(outDec.decode()); } catch (e) { /* 忽略末尾解码异常 */ }
             channel.appendLine('');
             if (code === 0) {
-                resolve({ ok: true, message: probe ? '链路探测通过（未烧录）' : '下载完成' });
+                resolve({
+                    ok: true,
+                    message: probe
+                        ? vscode.l10n.t('Link probe passed (no programming performed)')
+                        : vscode.l10n.t('Programming completed'),
+                });
             } else {
                 const msg = errText.trim().replace(/^\[ERROR\]\s*/m, '');
-                resolve({ ok: false, message: msg || `烧录助手异常退出（代码 ${code}）` });
+                resolve({
+                    ok: false,
+                    message: msg || vscode.l10n.t('The flash helper exited unexpectedly (code {0}).', String(code)),
+                });
             }
         });
     });

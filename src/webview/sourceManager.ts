@@ -35,12 +35,14 @@ export function showSourceManager(context: vscode.ExtensionContext, workspaceRoo
                 const r = resolveSource(name, workspaceRoot, sourceDirsCfg);
                 return { name, resolved: r ? path.relative(workspaceRoot, r).split(path.sep).join('/') : '', missing: !r };
             });
-            return { mode: 'scw', scw, scwName: path.basename(scw), device: info.device || '(未知)', files };
+            return { mode: 'scw', scw, scwName: path.basename(scw), device: info.device || vscode.l10n.t('Unknown'), files };
         } else {
             // scw-less：从 scmcu.sourceFiles 读，空则回退到自动扫描
             const dev = cfg.get<string>('device', '') || '';
             if (!dev) {
-                vscode.window.showErrorMessage('脱离 .scw 模式：未配置 scmcu.device。请在「设置 → 扩展 → SCMCU」中填写，或用命令面板 "SCMCU: 设置芯片型号"');
+                vscode.window.showErrorMessage(vscode.l10n.t(
+                    'Without .scw mode: scmcu.device is not configured. Enter a chip model in Settings > Extensions > SCMCU, or run "SCMCU: Set Chip Model" from the Command Palette.'
+                ));
                 return null;
             }
             const override = (cfg.get<string[]>('sourceFiles', []) || []).filter(s => s && s.trim().length > 0);
@@ -49,7 +51,7 @@ export function showSourceManager(context: vscode.ExtensionContext, workspaceRoo
                 const r = resolveSource(name, workspaceRoot, sourceDirsCfg);
                 return { name, resolved: r ? path.relative(workspaceRoot, r).split(path.sep).join('/') : '', missing: !r };
             });
-            return { mode: 'scwless', scw: null, scwName: '(脱离 .scw 模式)', device: dev, files };
+            return { mode: 'scwless', scw: null, scwName: vscode.l10n.t('Without .scw mode'), device: dev, files };
         }
     };
 
@@ -81,7 +83,7 @@ export function showSourceManager(context: vscode.ExtensionContext, workspaceRoo
 
     const panel = vscode.window.createWebviewPanel(
         'scmcu.sourceManager',
-        '源文件管理',
+        vscode.l10n.t('Source File Manager'),
         vscode.ViewColumn.One,
         { enableScripts: true, retainContextWhenHidden: true },
     );
@@ -108,17 +110,19 @@ export function showSourceManager(context: vscode.ExtensionContext, workspaceRoo
             if (msg.type === 'add') {
                 const candidates = listCandidateSources(workspaceRoot, d.files.map(f => f.name));
                 const picks = [
-                    { label: '浏览文件… (文件对话框)', value: '__browse__' },
+                    { label: vscode.l10n.t('Browse files... (File Dialog)'), value: '__browse__' },
                     ...candidates.map(c => ({ label: c, value: c })),
                 ];
-                const pick = await vscode.window.showQuickPick(picks, { placeHolder: '选择要添加的源文件' });
+                const pick = await vscode.window.showQuickPick(picks, {
+                    placeHolder: vscode.l10n.t('Select source files to add'),
+                });
                 if (!pick) return;
                 let toAdd: string[] = [];
                 if (pick.value === '__browse__') {
                     const uris = await vscode.window.showOpenDialog({
                         canSelectMany: true,
                         defaultUri: vscode.Uri.file(workspaceRoot),
-                        filters: { '源文件': ['c', 'asm', 's', 'h'] },
+                        filters: { [vscode.l10n.t('Source files')]: ['c', 'asm', 's', 'h'] },
                     });
                     if (!uris) return;
                     toAdd = uris.map(u => path.relative(workspaceRoot, u.fsPath).split(path.sep).join('/'));
@@ -128,13 +132,13 @@ export function showSourceManager(context: vscode.ExtensionContext, workspaceRoo
                 // 追加到末尾
                 const newList = d.files.map(f => f.name).concat(toAdd.filter(n => !d.files.some(f => f.name === n)));
                 await persist(newList);
-                for (const n of toAdd) channel.appendLine(`[SCMCU] 已添加源文件: ${n}`);
+                for (const n of toAdd) channel.appendLine(vscode.l10n.t('[SCMCU] Source file added: {0}', n));
                 render();
             } else if (msg.type === 'remove') {
                 const newList = d.files.map(f => f.name).filter(n => n !== msg.name);
                 await persist(newList);
-                channel.appendLine(`[SCMCU] 已移除源文件: ${msg.name}`);
-                vscode.window.showInformationMessage(`已移除: ${msg.name}`);
+                channel.appendLine(vscode.l10n.t('[SCMCU] Source file removed: {0}', msg.name));
+                vscode.window.showInformationMessage(vscode.l10n.t('Removed: {0}', msg.name));
                 render();
             } else if (msg.type === 'up' || msg.type === 'down') {
                 const dir = msg.type === 'up' ? -1 : 1;
@@ -148,11 +152,11 @@ export function showSourceManager(context: vscode.ExtensionContext, workspaceRoo
             } else if (msg.type === 'reorder') {
                 if (!Array.isArray(msg.order) || msg.order.length === 0) return;
                 await persist(msg.order.map(String));
-                channel.appendLine(`[SCMCU] 已通过拖拽调整源文件顺序`);
+                channel.appendLine(vscode.l10n.t('[SCMCU] Source file order changed by drag and drop'));
                 render();
             }
         } catch (e: any) {
-            vscode.window.showErrorMessage('源文件操作失败: ' + e.message);
+            vscode.window.showErrorMessage(vscode.l10n.t('Source file operation failed: {0}', e.message));
         }
     });
 }
@@ -165,35 +169,41 @@ function esc(s: string): string {
 function renderHtml(d: PanelData): string {
     const nonce = Math.random().toString(36).slice(2, 12);
     const isScwLess = d.mode === 'scwless';
-    const subLine = isScwLess
-        ? `目标: ${d.scwName} ｜ 模式: 脱离 .scw（保存将写入 scmcu.sourceFiles 工作区设置；当前未设置→回退到自动扫描）`
-        : `工程: ${d.scwName} ｜ 顺序即编译顺序（可拖动行或使用 ▲▼ 调整）；修改即时写回 .scw`;
+    const subLine = esc(isScwLess
+        ? vscode.l10n.t(
+            'Target: {0} | Mode: without .scw (saving writes to the scmcu.sourceFiles workspace setting; if unset, files are scanned automatically)',
+            d.scwName
+        )
+        : vscode.l10n.t(
+            'Project: {0} | File order determines compilation order. Drag rows or use the up/down buttons to reorder; changes are written to .scw immediately.',
+            d.scwName
+        ));
     let rows = '';
     if (d.files.length === 0) {
-        rows = '<li class="empty">当前没有源文件，点击上方「+ 添加源文件」</li>';
+        rows = `<li class="empty">${esc(vscode.l10n.t('No source files yet. Click "+ Add Source File" above.'))}</li>`;
     } else {
         d.files.forEach((f, i) => {
             const n = d.files.length;
             const upDis = i === 0 ? ' disabled' : '';
             const downDis = i === n - 1 ? ' disabled' : '';
             const pathTxt = f.missing
-                ? `<span class="warn">⚠ 未找到（检查 scmcu.sourceDirs 或加子目录前缀）</span>`
+                ? `<span class="warn">${esc(vscode.l10n.t('Not found (check scmcu.sourceDirs or add a subdirectory prefix)'))}</span>`
                 : `<span class="path">${esc(f.resolved)}</span>`;
             rows += `<li draggable="true" data-name="${esc(f.name)}">
       <span class="idx">${i + 1}</span>
       <span class="name">${esc(f.name)}</span>
       ${pathTxt}
       <span class="acts">
-        <button data-act="up" data-name="${esc(f.name)}"${upDis} title="上移（更靠前）">▲</button>
-        <button data-act="down" data-name="${esc(f.name)}"${downDis} title="下移（更靠后）">▼</button>
-        <button data-act="remove" data-name="${esc(f.name)}" title="移除">✕</button>
+        <button data-act="up" data-name="${esc(f.name)}"${upDis} title="${esc(vscode.l10n.t('Move up (earlier)'))}">▲</button>
+        <button data-act="down" data-name="${esc(f.name)}"${downDis} title="${esc(vscode.l10n.t('Move down (later)'))}">▼</button>
+        <button data-act="remove" data-name="${esc(f.name)}" title="${esc(vscode.l10n.t('Remove'))}">✕</button>
       </span>
     </li>`;
         });
     }
 
     return `<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="${vscode.env.language.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en'}">
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
@@ -238,9 +248,9 @@ li.drag-over { border-color: var(--vscode-focusBorder); box-shadow: inset 0 0 0 
 </style>
 </head>
 <body>
-<h1>源文件管理 — ${esc(d.device)}</h1>
+<h1>${esc(vscode.l10n.t('Source File Manager - {0}', d.device))}</h1>
 <p class="sub">${subLine}</p>
-<div class="bar"><button id="add">+ 添加源文件</button></div>
+<div class="bar"><button id="add">${esc(vscode.l10n.t('+ Add Source File'))}</button></div>
 <ul class="list">${rows}</ul>
 <script nonce="${nonce}">
 (function () {

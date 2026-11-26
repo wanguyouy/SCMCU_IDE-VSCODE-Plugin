@@ -26,7 +26,7 @@ export function showHardwareOptions(context: vscode.ExtensionContext, workspaceR
 
     const panel = vscode.window.createWebviewPanel(
         'scmcu.hardwareOptions',
-        `芯片设置 - ${data.device}`,
+        vscode.l10n.t('Chip Settings - {0}', data.device),
         vscode.ViewColumn.One,
         { enableScripts: true, retainContextWhenHidden: true },
     );
@@ -52,13 +52,19 @@ export function showHardwareOptions(context: vscode.ExtensionContext, workspaceR
             for (const scxPath of findScxFiles(workspaceRoot, buildDir)) {
                 if (patchScxConfigWords(scxPath, data.device, w)) synced.push(path.basename(scxPath));
             }
-            channel.appendLine(`[SCMCU] 芯片设置已保存${logLabel}: config=${formatWords(w)} -> ${path.basename(data.scw!)}`);
+            channel.appendLine(vscode.l10n.t(
+                '[SCMCU] Chip settings saved{0}: config={1} -> {2}',
+                logLabel, formatWords(w), path.basename(data.scw!)
+            ));
         } else {
             // scw-less：写入 scmcu.configWords（十六进制字符串数组）
             const cfg = vscode.workspace.getConfiguration('scmcu');
             const hexStrs = w.map(x => '0x' + x.toString(16).toUpperCase().padStart(4, '0'));
             await cfg.update('configWords', hexStrs, vscode.ConfigurationTarget.Workspace);
-            channel.appendLine(`[SCMCU] 芯片设置已保存${logLabel}: scmcu.configWords=${formatWords(w)} (工作区设置)`);
+            channel.appendLine(vscode.l10n.t(
+                '[SCMCU] Chip settings saved{0}: scmcu.configWords={1} (workspace settings)',
+                logLabel, formatWords(w)
+            ));
             // 同步覆盖已有 .scx 的配置字（程序区不动），这样烧录文件与设置保持一致
             const buildDir = cfg.get<string>('buildDir', 'build');
             for (const scxPath of findScxFiles(workspaceRoot, buildDir)) {
@@ -79,23 +85,37 @@ export function showHardwareOptions(context: vscode.ExtensionContext, workspaceR
                     const synced = await persist(w, '');
                     const ws = formatWords(w);
                     if (synced.length > 0) {
-                        channel.appendLine(`[SCMCU] 已同步配置字到烧录文件: ${synced.join(', ')}`);
+                        channel.appendLine(vscode.l10n.t(
+                            '[SCMCU] Configuration words synchronized to programming files: {0}',
+                            synced.join(', ')
+                        ));
                         vscode.window.showInformationMessage(
                             data.mode === 'scw'
-                                ? `芯片设置已写入 ${path.basename(data.scw!)}，并同步到烧录文件: ${synced.join(', ')}`
-                                : `芯片设置已写入 scmcu.configWords，并同步到烧录文件: ${synced.join(', ')}`,
+                                ? vscode.l10n.t(
+                                    'Chip settings were written to {0} and synchronized to programming files: {1}',
+                                    path.basename(data.scw!), synced.join(', ')
+                                )
+                                : vscode.l10n.t(
+                                    'Chip settings were written to scmcu.configWords and synchronized to programming files: {0}',
+                                    synced.join(', ')
+                                ),
                         );
                         panel.webview.postMessage({ type: 'saved', words: w, syncedScx: synced });
                     } else {
                         vscode.window.showInformationMessage(
                             data.mode === 'scw'
-                                ? `芯片设置已写入 ${path.basename(data.scw!)}（未发现 .scx 烧录文件，编译后生效）`
-                                : `芯片设置已写入 scmcu.configWords（未发现 .scx 烧录文件，编译后生效）`,
+                                ? vscode.l10n.t(
+                                    'Chip settings were written to {0}. No .scx programming file was found; changes will take effect after the next build.',
+                                    path.basename(data.scw!)
+                                )
+                                : vscode.l10n.t(
+                                    'Chip settings were written to scmcu.configWords. No .scx programming file was found; changes will take effect after the next build.'
+                                ),
                         );
                         panel.webview.postMessage({ type: 'saved', words: w });
                     }
                 } catch (e: any) {
-                    vscode.window.showErrorMessage('保存失败: ' + e.message);
+                    vscode.window.showErrorMessage(vscode.l10n.t('Save failed: {0}', e.message));
                 }
             }
         } else if (msg.type === 'resetDefault') {
@@ -107,7 +127,7 @@ export function showHardwareOptions(context: vscode.ExtensionContext, workspaceR
                     if (opts.length > 0) defaults[sec] = opts[0];
                 }
                 const w = computeConfigWordsFromBase(data.tpl, defaults, data.words, data.hexmcu);
-                await persist(w, ' (已恢复默认值)');
+                await persist(w, vscode.l10n.t(' (defaults restored)'));
                 // scw 模式下也同步 patch scx
                 if (data.mode === 'scw') {
                     const buildDir = vscode.workspace.getConfiguration('scmcu').get<string>('buildDir', 'build');
@@ -116,7 +136,10 @@ export function showHardwareOptions(context: vscode.ExtensionContext, workspaceR
                         if (patchScxConfigWords(scxPath, data.device, w)) patched.push(path.basename(scxPath));
                     }
                     if (patched.length > 0) {
-                        channel.appendLine(`[SCMCU] 已同步配置字到烧录文件: ${patched.join(', ')}`);
+                        channel.appendLine(vscode.l10n.t(
+                            '[SCMCU] Configuration words synchronized to programming files: {0}',
+                            patched.join(', ')
+                        ));
                     }
                 }
                 // 重新加载数据并刷新面板
@@ -124,9 +147,9 @@ export function showHardwareOptions(context: vscode.ExtensionContext, workspaceR
                 if (fresh && panelRef === panel) {
                     panel.webview.html = renderHtml(fresh);
                 }
-                vscode.window.showInformationMessage('已恢复默认值');
+                vscode.window.showInformationMessage(vscode.l10n.t('Defaults restored'));
             } catch (e: any) {
-                vscode.window.showErrorMessage('恢复默认值失败: ' + e.message);
+                vscode.window.showErrorMessage(vscode.l10n.t('Failed to restore defaults: {0}', e.message));
             }
         }
     });
@@ -157,21 +180,26 @@ function loadPanelData(workspaceRoot: string): PanelData | null {
         mode = 'scw';
         scwInfo = parseScw(scw);
         device = scwInfo.device;
-        if (!device) { vscode.window.showErrorMessage('.scw 缺少 Device= 行'); return null; }
+        if (!device) { vscode.window.showErrorMessage(vscode.l10n.t('.scw file is missing a Device= entry.')); return null; }
     } else {
         mode = 'scwless';
         device = cfg.get<string>('device', '') || '';
         if (!device) {
-            vscode.window.showErrorMessage('脱离 .scw 模式：未配置 scmcu.device。请在「设置 → 扩展 → SCMCU」中填写，或用命令面板 "SCMCU: 设置芯片型号"');
+            vscode.window.showErrorMessage(vscode.l10n.t(
+                'Without .scw mode: scmcu.device is not configured. Enter a chip model in Settings > Extensions > SCMCU, or run "SCMCU: Set Chip Model" from the Command Palette.'
+            ));
             return null;
         }
     }
 
     const comp = findCompilerDir();
-    if (!comp) { vscode.window.showErrorMessage('未找到编译器，请先执行 "SCMCU: 配置编译器目录"'); return null; }
+    if (!comp) { vscode.window.showErrorMessage(vscode.l10n.t('Compiler not found. Run "SCMCU: Configure Compiler Directory" first.')); return null; }
 
     const cfgPath = path.join(comp.idePath, 'mcu', 'config', device + '.cfg');
-    if (!fs.existsSync(cfgPath)) { vscode.window.showErrorMessage(`未找到芯片配置模板: ${cfgPath}`); return null; }
+    if (!fs.existsSync(cfgPath)) {
+        vscode.window.showErrorMessage(vscode.l10n.t('Chip configuration template not found: {0}', cfgPath));
+        return null;
+    }
     const tpl = parseCfgTemplate(cfgPath);
     const hexmcu = loadChipParams(comp.idePath, device).hexmcu;
 
@@ -195,7 +223,7 @@ function loadPanelData(workspaceRoot: string): PanelData | null {
     return {
         mode,
         scw: mode === 'scw' ? scw! : null,
-        scwName: mode === 'scw' ? path.basename(scw!) : '(脱离 .scw 模式)',
+        scwName: mode === 'scw' ? path.basename(scw!) : vscode.l10n.t('Without .scw mode'),
         device,
         tpl,
         words,
@@ -209,8 +237,21 @@ function renderHtml(d: PanelData): string {
     const nonce = Math.random().toString(36).slice(2, 12);
     const isScwLess = d.mode === 'scwless';
     const subLine = isScwLess
-        ? `目标: ${d.scwName} ｜ 模式: 脱离 .scw（保存将写入 scmcu.configWords 工作区设置）`
-        : `工程文件: ${d.scwName} ｜ 修改后点击"保存配置"，将写回 .scw 的 config= 行（IDE 同步生效）`;
+        ? vscode.l10n.t(
+            'Target: {0} | Mode: without .scw (saving writes to the scmcu.configWords workspace setting)',
+            d.scwName
+        )
+        : vscode.l10n.t(
+            'Project file: {0} | Click "Save Configuration" after making changes to write the config= entry back to .scw (takes effect in the IDE immediately).',
+            d.scwName
+        );
+    const messages = JSON.stringify({
+        notSaved: vscode.l10n.t('Not saved'),
+        previewWords: vscode.l10n.t('Configuration words (preview): {0}', '{0}'),
+        savedWords: vscode.l10n.t('Configuration words: {0}', '{0}'),
+        saved: vscode.l10n.t('Saved'),
+        synced: vscode.l10n.t(', and synchronized to programming files: {0}', '{0}'),
+    }).replace(/</g, '\\u003c');
 
     let sectionsHtml = '';
     for (const sec of Object.keys(d.tpl)) {
@@ -225,7 +266,7 @@ function renderHtml(d: PanelData): string {
     }
 
     return `<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="${vscode.env.language.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en'}">
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${nonce ? `'nonce-${nonce}'` : "'unsafe-inline'"}; script-src 'nonce-${nonce}';">
@@ -282,18 +323,22 @@ button.secondary {
 </style>
 </head>
 <body>
-<h1>硬件选项配置 — ${d.device}</h1>
+<h1>${vscode.l10n.t('Hardware Options - {0}', d.device)}</h1>
 <p class="sub">${subLine}</p>
 ${sectionsHtml}
 <div class="bar">
-    <button id="save">保存配置</button>
-    <button id="reset" class="secondary">恢复默认值</button>
-    <span id="words">配置字: ${wordStr}</span>
+    <button id="save">${vscode.l10n.t('Save Configuration')}</button>
+    <button id="reset" class="secondary">${vscode.l10n.t('Restore Defaults')}</button>
+    <span id="words">${vscode.l10n.t('Configuration words: {0}', wordStr)}</span>
     <span id="status"></span>
 </div>
 <script nonce="${nonce}">
 (function () {
     var vscode = acquireVsCodeApi();
+    var messages = ${messages};
+    function format(template, value) {
+        return template.replace('{0}', value);
+    }
     function collect() {
         var sel = {};
         document.querySelectorAll('fieldset').forEach(function (fs) {
@@ -307,7 +352,7 @@ ${sectionsHtml}
     }
     document.querySelectorAll('input[type=radio]').forEach(function (r) {
         r.addEventListener('change', function () {
-            document.getElementById('status').textContent = '未保存';
+            document.getElementById('status').textContent = messages.notSaved;
             vscode.postMessage({ type: 'preview', selections: collect() });
         });
     });
@@ -320,11 +365,11 @@ ${sectionsHtml}
     window.addEventListener('message', function (e) {
         var m = e.data;
         if (m.type === 'previewResult') {
-            document.getElementById('words').textContent = '配置字(预览): ' + fmt(m.words);
+            document.getElementById('words').textContent = format(messages.previewWords, fmt(m.words));
         } else if (m.type === 'saved') {
-            document.getElementById('words').textContent = '配置字: ' + fmt(m.words);
-            var st = '✅ 已保存';
-            if (m.syncedScx && m.syncedScx.length) st += '，并同步到烧录文件: ' + m.syncedScx.join(', ');
+            document.getElementById('words').textContent = format(messages.savedWords, fmt(m.words));
+            var st = messages.saved;
+            if (m.syncedScx && m.syncedScx.length) st += format(messages.synced, m.syncedScx.join(', '));
             document.getElementById('status').textContent = st;
         }
     });

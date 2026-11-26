@@ -1,0 +1,36 @@
+
+{
+    "extension.displayName": "SCMCU IDE (SC8 系列)",
+    "extension.description": "在 VS Code 中编译 SC8F/SC8P 系列单片机工程、配置硬件选项、生成 .scx 烧录文件（基于 SCMCU_IDE 工具链）",
+
+    "command.build.title": "SCMCU: 编译 (生成 .hex + .scx)",
+    "command.buildAndFlash.title": "SCMCU: 一键编译下载",
+    "command.flash.title": "SCMCU: 只下载（不编译）",
+    "command.hardwareOptions.title": "SCMCU: 芯片设置",
+    "command.selectChip.title": "SCMCU: 选择芯片型号",
+    "command.configureCompiler.title": "SCMCU: 配置编译器目录",
+    "command.detectCompiler.title": "SCMCU: 自动检测编译器",
+    "command.manageSources.title": "SCMCU: 源文件管理",
+    "command.setDevice.title": "SCMCU: 设置芯片型号 (脱离 .scw)",
+    "command.setConfigWords.title": "SCMCU: 设置配置字 (脱离 .scw)",
+    "command.startup.title": "SCMCU: 启动",
+    "command.fixConfigWords.title": "SCMCU: 规范化配置字",
+
+    "configuration.title": "SCMCU",
+
+    "configuration.compilerPath.description": "SCMCU_IDE 的 data\\bin 目录路径（含 picc.exe）。留空时自动检测。",
+    "configuration.idePath.description": "SCMCU_IDE 安装根目录（含 mcu\\config 目录）。留空时自动检测。",
+    "configuration.buildDir.description": "编译输出目录（相对工程根目录）。",
+    "configuration.outputName.description": "编译产物文件名（不含扩展名），生成 <name>.hex 和 <name>.scx。",
+    "configuration.sourceDirs.description": "C 源文件目录（相对工程根目录；空字符串 = 根目录）。.scw 里的 SourceFile 裸名将按此顺序查找，找不到再找根目录和常见目录(src/source)。",
+    "configuration.includeDirs.description": "头文件 include 目录（相对工程根目录；空字符串 = 根目录）。编译时会将这些目录加入 -I。",
+    "configuration.device.description": "脱离 .scw 工程文件编译时使用的芯片型号（如 SC8F052A04）。留空则「脱离 .scw」编译报错提示配置。",
+    "configuration.configWords.description": "脱离 .scw 编译时使用的 4 个配置字（十六进制字符串，如 [\"0x1FFF\",\"0x3FFF\",\"0x3FFF\",\"0x3FFF\"]）。留空则用芯片默认未编程配置字（编译时给出警告，烧录前请核对硬件选项）。",
+    "configuration.sourceFiles.description": "脱离 .scw 编译时使用的源文件清单（相对工程根目录，顺序敏感——即编译顺序）。空数组=自动扫描工程下所有 .c/.asm/.s；非空=使用此列表（按顺序编译），可用「源文件管理」面板维护。优先于自动扫描。",
+    "configuration.noScwBehavior.description": "找不到 .scw 文件时的行为。prompt=弹窗询问；load=直接加载；skip=不加载。弹窗中的「记住并加载 / 记住并不加载」会写入此项。",
+    "configuration.noScwBehavior.prompt": "每次打开找不到 .scw 的工作区时弹窗询问是否加载插件",
+    "configuration.noScwBehavior.load": "不再弹窗，直接加载插件（脱离 .scw 模式）",
+    "configuration.noScwBehavior.skip": "不再弹窗，且不加载插件（视为非 SCMCU 工程）",
+    "configuration.writerPath.description": "SCMCU Writer（编程器上位机）安装目录，如 F:/Work/SCMCU_Writer_V9.01.16。留空时自动扫描盘符根目录下 SCMCU_Writer* 目录。",
+    "configuration.flashCount.description": "脱机烧写次数上限（WriterCount，0=无限，默认0）。0 表示编程器可不限次数烧录；设为正整数则限制编程器对该固件的可烧录次数（量产防超烧用）。注意：此值不是“烧录片数”，而是“该固件最多能被烧多少次”。"
+}

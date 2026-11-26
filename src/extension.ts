@@ -33,9 +33,9 @@ async function ensureFlashHelper(context: vscode.ExtensionContext): Promise<void
     if (!fs.existsSync(cfg)) {
         try {
             fs.writeFileSync(cfg, HELPER_CONFIG_XML, 'utf8');
-            if (channel) channel.appendLine('[SCMCU] 已生成烧录助手配置: ' + cfg);
+            if (channel) channel.appendLine(vscode.l10n.t('[SCMCU] Flash helper configuration generated: {0}', cfg));
         } catch (e) {
-            if (channel) channel.appendLine('[SCMCU] 生成烧录助手配置失败: ' + e);
+            if (channel) channel.appendLine(vscode.l10n.t('[SCMCU] Failed to generate flash helper configuration: {0}', String(e)));
         }
     }
     // 2) exe 缺失 → 尝试自动构建（python flash/build_helper.py，需 Python + 网络下载 Roslyn）
@@ -45,17 +45,25 @@ async function ensureFlashHelper(context: vscode.ExtensionContext): Promise<void
     if (!fs.existsSync(exe)) {
         const py = process.env.SCMCU_BUILD_PY || 'python';
         const script = path.join(flashDir, 'build_helper.py');
-        if (channel) channel.appendLine('[SCMCU] 未找到烧录助手，正在自动构建（首次需联网下载 Roslyn 编译器）…');
+        if (channel) channel.appendLine(vscode.l10n.t(
+            '[SCMCU] Flash helper not found. Building it automatically (the first build requires downloading the Roslyn compiler)...'
+        ));
         const child = spawn(py, [script], { cwd: flashDir });
         child.stdout.on('data', (c: Buffer) => { if (channel) channel.append(c.toString('utf8')); });
         child.stderr.on('data', (c: Buffer) => { if (channel) channel.append(c.toString('utf8')); });
         child.on('error', (e) => {
-            if (channel) channel.appendLine('[SCMCU] 自动构建失败（无法启动 python）: ' + e.message + '。可手动运行: ' + py + ' ' + script);
+            if (channel) channel.appendLine(vscode.l10n.t(
+                '[SCMCU] Automatic build failed (could not start Python): {0}. You can run it manually: {1} {2}',
+                e.message, py, script
+            ));
         });
         child.on('close', (code) => {
             if (channel) channel.appendLine(code === 0
-                ? '[SCMCU] 烧录助手构建完成'
-                : '[SCMCU] 自动构建失败（退出码 ' + code + '）。可手动运行: ' + py + ' ' + script);
+                ? vscode.l10n.t('[SCMCU] Flash helper build completed')
+                : vscode.l10n.t(
+                    '[SCMCU] Automatic build failed (exit code {0}). You can run it manually: {1} {2}',
+                    String(code), py, script
+                ));
         });
     }
 }
@@ -83,7 +91,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 // 加载 SCMCU 插件功能：注册全部命令、状态栏等。幂等，重复调用不会重复注册。
 function startScmcu(context: vscode.ExtensionContext): void {
     if (scmcuLoaded) {
-        vscode.window.showInformationMessage('SCMCU 插件功能已加载');
+        vscode.window.showInformationMessage(vscode.l10n.t('SCMCU features are already loaded'));
         return;
     }
     scmcuLoaded = true;
@@ -132,22 +140,31 @@ function startScmcu(context: vscode.ExtensionContext): void {
     // ---- 选择芯片 ----
     context.subscriptions.push(vscode.commands.registerCommand('scmcu.selectChip', async () => {
         const root = getWorkspaceRoot();
-        if (!root) { vscode.window.showWarningMessage('请先打开包含 .scw 工程的文件夹'); return; }
+        if (!root) { vscode.window.showWarningMessage(vscode.l10n.t('Please open a folder containing an .scw project.')); return; }
         const scw = findScwFile(root);
-        if (!scw) { vscode.window.showErrorMessage('未找到 .scw 工程文件'); return; }
+        if (!scw) { vscode.window.showErrorMessage(vscode.l10n.t('No .scw project file was found.')); return; }
         const comp = findCompilerDir();
-        if (!comp) { vscode.window.showErrorMessage('未找到编译器，请先配置'); return; }
+        if (!comp) { vscode.window.showErrorMessage(vscode.l10n.t('Compiler not found. Please configure it first.')); return; }
         const chips = listChips(comp.idePath);
-        if (chips.length === 0) { vscode.window.showErrorMessage(`未扫描到芯片列表: ${path.join(comp.idePath, 'mcu', 'config')}`); return; }
+        if (chips.length === 0) {
+            vscode.window.showErrorMessage(vscode.l10n.t(
+                'No chip models were found in: {0}',
+                path.join(comp.idePath, 'mcu', 'config')
+            ));
+            return;
+        }
         const current = parseScw(scw).device;
         const pick = await vscode.window.showQuickPick(
-            chips.map(c => ({ label: c, description: c === current ? '当前' : undefined })),
-            { placeHolder: `当前芯片: ${current}，选择新芯片` },
+            chips.map(c => ({ label: c, description: c === current ? vscode.l10n.t('Current') : undefined })),
+            { placeHolder: vscode.l10n.t('Current chip: {0}. Select a new chip.', current) },
         );
         if (!pick) return;
         writeScwDevice(scw, pick.label);
         updateStatusBar(chipStatus, cfgStatus, buildStatus, srcStatus);
-        vscode.window.showInformationMessage(`芯片已切换为 ${pick.label}，建议重新打开"硬件选项"确认配置`);
+        vscode.window.showInformationMessage(vscode.l10n.t(
+            'Chip changed to {0}. Reopen Hardware Options to verify the configuration.',
+            pick.label
+        ));
     }));
 
     // ---- 配置编译器目录 ----
@@ -155,9 +172,9 @@ function startScmcu(context: vscode.ExtensionContext): void {
         const cfg = vscode.workspace.getConfiguration('scmcu');
         const cur = cfg.get<string>('idePath', '') || '';
         const val = await vscode.window.showInputBox({
-            prompt: '输入 SCMCU_IDE 安装根目录（应包含 mcu\\config 和 data\\bin\\picc.exe）',
+            prompt: vscode.l10n.t('Enter the SCMCU_IDE installation root directory (must contain mcu\\config and data\\bin\\picc.exe)'),
             value: cur,
-            placeHolder: '如 C:\\Program Files (x86)\\SCMCU_IDE_V2.00.17',
+            placeHolder: vscode.l10n.t('e.g. C:\\Program Files (x86)\\SCMCU_IDE_V2.00.17'),
         });
         if (val === undefined || val.trim() === '') return;
         const ide = val.trim().replace(/\\+$/, '');
@@ -165,9 +182,11 @@ function startScmcu(context: vscode.ExtensionContext): void {
         if (fs.existsSync(path.join(bin, 'picc.exe')) && fs.existsSync(path.join(ide, 'mcu'))) {
             await cfg.update('compilerPath', bin, vscode.ConfigurationTarget.Global);
             await cfg.update('idePath', ide, vscode.ConfigurationTarget.Global);
-            vscode.window.showInformationMessage(`编译器已配置: ${bin}`);
+            vscode.window.showInformationMessage(vscode.l10n.t('Compiler configured: {0}', bin));
         } else {
-            vscode.window.showWarningMessage('该目录下未找到 data\\bin\\picc.exe 或 mcu 目录，请确认路径');
+            vscode.window.showWarningMessage(vscode.l10n.t(
+                'The specified directory does not contain data\\bin\\picc.exe or the mcu directory. Please check the path.'
+            ));
         }
     }));
 
@@ -178,16 +197,18 @@ function startScmcu(context: vscode.ExtensionContext): void {
             const cfg = vscode.workspace.getConfiguration('scmcu');
             await cfg.update('compilerPath', found.binDir, vscode.ConfigurationTarget.Global);
             await cfg.update('idePath', found.idePath, vscode.ConfigurationTarget.Global);
-            vscode.window.showInformationMessage(`自动检测到编译器: ${found.binDir}`);
+            vscode.window.showInformationMessage(vscode.l10n.t('Compiler detected automatically: {0}', found.binDir));
         } else {
-            vscode.window.showErrorMessage('未自动检测到编译器，请用 "SCMCU: 配置编译器目录" 手动指定');
+            vscode.window.showErrorMessage(vscode.l10n.t(
+                'Compiler was not detected automatically. Use "SCMCU: Configure Compiler Directory" to specify it manually.'
+            ));
         }
     }));
 
     // ---- 源文件管理 ----
     context.subscriptions.push(vscode.commands.registerCommand('scmcu.manageSources', () => {
         const root = getWorkspaceRoot();
-        if (!root) { vscode.window.showWarningMessage('请先打开包含 .scw 工程的文件夹'); return; }
+        if (!root) { vscode.window.showWarningMessage(vscode.l10n.t('Please open a folder containing an .scw project.')); return; }
         showSourceManager(context, root, channel);
     }));
 
@@ -196,15 +217,15 @@ function startScmcu(context: vscode.ExtensionContext): void {
         const cfg = vscode.workspace.getConfiguration('scmcu');
         const cur = cfg.get<string>('device', '') || '';
         const val = await vscode.window.showInputBox({
-            prompt: '脱离 .scw 编译时使用的芯片型号（如 SC8F052A04）',
+            prompt: vscode.l10n.t('Chip model to use when building without a .scw file (e.g. SC8F052A04)'),
             value: cur,
-            placeHolder: '如 SC8F052A04',
+            placeHolder: vscode.l10n.t('e.g. SC8F052A04'),
         });
         if (val === undefined) return;
         const dev = val.trim();
-        if (dev === '') { vscode.window.showWarningMessage('芯片型号不能为空'); return; }
+        if (dev === '') { vscode.window.showWarningMessage(vscode.l10n.t('Chip model cannot be empty.')); return; }
         await cfg.update('device', dev, vscode.ConfigurationTarget.Workspace);
-        vscode.window.showInformationMessage(`已设置 scmcu.device = ${dev}（写入工作区设置）`);
+        vscode.window.showInformationMessage(vscode.l10n.t('Set scmcu.device = {0} (saved in workspace settings)', dev));
         updateStatusBar(chipStatus, cfgStatus, buildStatus, srcStatus);
     }));
 
@@ -213,7 +234,7 @@ function startScmcu(context: vscode.ExtensionContext): void {
         const cfg = vscode.workspace.getConfiguration('scmcu');
         const cur = (cfg.get<string[]>('configWords', []) || []).join(', ');
         const val = await vscode.window.showInputBox({
-            prompt: '脱离 .scw 编译时的 4 个配置字（十六进制，逗号分隔，如 0x1FFF, 0x3FFF, 0x3FFF, 0x3FFF）',
+            prompt: vscode.l10n.t('Enter the four configuration words for builds without .scw (hexadecimal, comma-separated, e.g. 0x1FFF, 0x3FFF, 0x3FFF, 0x3FFF)'),
             value: cur,
             placeHolder: '0x1FFF, 0x3FFF, 0x3FFF, 0x3FFF',
         });
@@ -221,8 +242,8 @@ function startScmcu(context: vscode.ExtensionContext): void {
         const parts = val.split(',').map(s => s.trim()).filter(s => s.length > 0);
         await cfg.update('configWords', parts, vscode.ConfigurationTarget.Workspace);
         vscode.window.showInformationMessage(parts.length
-            ? `已设置 scmcu.configWords = [${parts.join(', ')}]`
-            : '已清空 scmcu.configWords（脱离 .scw 将用默认未编程配置字，编译时给出警告）');
+            ? vscode.l10n.t('Set scmcu.configWords = [{0}]', parts.join(', '))
+            : vscode.l10n.t('Cleared scmcu.configWords. Builds without .scw will use the default unprogrammed configuration words and show a warning.'));
     }));
 
     // ---- 规范化配置字（对齐芯片规范，修复"换芯片串配置字"导致的高位/隐藏位错误） ----
@@ -244,13 +265,13 @@ function startScmcu(context: vscode.ExtensionContext): void {
     const downloadStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 96);
     downloadStatus.command = 'scmcu.flash';
     downloadStatus.text = '$(cloud-download)';
-    downloadStatus.tooltip = '只下载（不编译）：烧写 build 目录中已有固件';
+    downloadStatus.tooltip = vscode.l10n.t('Flash without building: program the existing firmware in the build directory');
     context.subscriptions.push(downloadStatus);
     downloadStatusItem = downloadStatus;
     const flashStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 95);
     flashStatus.command = 'scmcu.buildAndFlash';
     flashStatus.text = '$(zap)';
-    flashStatus.tooltip = '编译并下载到编程器';
+    flashStatus.tooltip = vscode.l10n.t('Build and flash to the programmer');
     context.subscriptions.push(flashStatus);
     flashStatusItem = flashStatus;
     const srcStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 98);
@@ -283,10 +304,10 @@ function promptNoScw(): Promise<boolean> {
         if (behavior === 'load') { resolve(true); return; }
         // 原生通知（右下角黑框）：仅一个「加载」按钮；超时/关闭(Esc)视为本次不加载
         vscode.window.showWarningMessage(
-            '未找到 .scw 工程文件，当前文件夹可能不是 SCMCU 工程。是否加载 SCMCU 插件功能？',
-            '加载'
+            vscode.l10n.t('No .scw project file was found in this folder. This may not be an SCMCU project. Load SCMCU extension features?'),
+            vscode.l10n.t('Load')
         ).then((choice) => {
-            resolve(choice === '加载');
+            resolve(choice === vscode.l10n.t('Load'));
         });
     });
 }
@@ -309,10 +330,12 @@ function updateStatusBar(chipStatus: vscode.StatusBarItem, cfgStatus: vscode.Sta
     if (device) {
         chipStatus.text = `$(chip) ${device}`;
         chipStatus.command = scwMode ? 'scmcu.setDevice' : 'scmcu.selectChip';
-        chipStatus.tooltip = scwMode ? '点击更换芯片型号 (脱离 .scw 模式)' : '点击切换芯片型号';
+        chipStatus.tooltip = scwMode
+            ? vscode.l10n.t('Click to change chip model (without .scw mode)')
+            : vscode.l10n.t('Click to select chip model');
         chipStatus.show();
         buildStatus.text = '$(debug-start)';
-        buildStatus.tooltip = '编译';
+        buildStatus.tooltip = vscode.l10n.t('Build');
         buildStatus.show();
         if (downloadStatusItem) downloadStatusItem.show();
         if (flashStatusItem) flashStatusItem.show();
@@ -320,14 +343,18 @@ function updateStatusBar(chipStatus: vscode.StatusBarItem, cfgStatus: vscode.Sta
         //   scw 模式 → 读写 .scw 文件
         //   scw-less 模式 → 读写 scmcu.configWords / scmcu.sourceFiles 工作区设置
         cfgStatus.text = '$(settings-gear)';
-        cfgStatus.tooltip = '芯片设置';
+        cfgStatus.tooltip = vscode.l10n.t('Hardware Options');
         cfgStatus.show();
         srcStatus.text = '$(file-directory)';
-        srcStatus.tooltip = '管理源文件';
+        srcStatus.tooltip = vscode.l10n.t('Manage Source Files');
         srcStatus.show();
     } else {
         chipStatus.text = '$(chip) SCMCU';
-        chipStatus.tooltip = root ? (scwMode ? '未配置 scmcu.device，无法脱离 .scw 编译' : '未找到 .scw 工程文件') : '未打开工程文件夹';
+        chipStatus.tooltip = root
+            ? (scwMode
+                ? vscode.l10n.t('scmcu.device is not configured. Cannot build without a .scw file.')
+                : vscode.l10n.t('No .scw project file was found.'))
+            : vscode.l10n.t('The project folder is not open.');
         chipStatus.show();
         cfgStatus.hide();
         buildStatus.hide();
@@ -341,7 +368,7 @@ function updateStatusBar(chipStatus: vscode.StatusBarItem, cfgStatus: vscode.Sta
 // 修复基底串了其它芯片（如 SC8F072 的 FAEF 被带入 SC8F052）或高位残留 F 的问题。
 async function normalizeConfigWords(): Promise<void> {
     const root = getWorkspaceRoot();
-    if (!root) { vscode.window.showWarningMessage('请先打开工程文件夹'); return; }
+    if (!root) { vscode.window.showWarningMessage(vscode.l10n.t('Please open a project folder.')); return; }
     const cfg = vscode.workspace.getConfiguration('scmcu');
     const scw = findScwFile(root);
     let device = '';
@@ -354,12 +381,15 @@ async function normalizeConfigWords(): Promise<void> {
         mode = 'scwless';
         device = cfg.get<string>('device', '') || '';
     }
-    if (!device) { vscode.window.showWarningMessage('无法确定芯片型号（无 .scw 且未设置 scmcu.device）'); return; }
+    if (!device) { vscode.window.showWarningMessage(vscode.l10n.t('Cannot determine the chip model (no .scw file and scmcu.device is not configured).')); return; }
 
     const comp = findCompilerDir();
-    if (!comp) { vscode.window.showErrorMessage('未找到编译器，请先配置 SCMCU_IDE 路径'); return; }
+    if (!comp) { vscode.window.showErrorMessage(vscode.l10n.t('Compiler not found. Please configure the SCMCU_IDE path.')); return; }
     const cfgPath = path.join(comp.idePath, 'mcu', 'config', device + '.cfg');
-    if (!fs.existsSync(cfgPath)) { vscode.window.showErrorMessage(`未找到芯片配置模板: ${cfgPath}`); return; }
+    if (!fs.existsSync(cfgPath)) {
+        vscode.window.showErrorMessage(vscode.l10n.t('Chip configuration template not found: {0}', cfgPath));
+        return;
+    }
 
     const hexmcu = loadChipParams(comp.idePath, device).hexmcu;
 
@@ -386,16 +416,31 @@ async function normalizeConfigWords(): Promise<void> {
         for (const s of findScxFiles(root, buildDir)) {
             if (patchScxConfigWords(s, device, resolved)) synced.push(path.basename(s));
         }
-        if (channel) channel.appendLine(`[SCMCU] 规范化配置字: ${before} -> ${after} (${path.basename(scwPath!)})`);
-        vscode.window.showInformationMessage(`已规范化配置字: ${before} -> ${after}${synced.length ? '，并同步 ' + synced.join(', ') : ''}`);
+        if (channel) channel.appendLine(vscode.l10n.t(
+            '[SCMCU] Configuration words normalized: {0} -> {1} ({2})',
+            before, after, path.basename(scwPath!)
+        ));
+        vscode.window.showInformationMessage(vscode.l10n.t(
+            'Configuration words normalized: {0} -> {1}{2}',
+            before, after, synced.length ? vscode.l10n.t(', and synchronized to programming files: {0}', synced.join(', ')) : ''
+        ));
     } else {
         const hexStrs = resolved.map(x => '0x' + x.toString(16).toUpperCase().padStart(4, '0'));
         await cfg.update('configWords', hexStrs, vscode.ConfigurationTarget.Workspace);
         for (const s of findScxFiles(root, buildDir)) {
             if (patchScxConfigWords(s, device, resolved)) synced.push(path.basename(s));
         }
-        if (channel) channel.appendLine(`[SCMCU] 规范化配置字: ${before} -> ${after} (scmcu.configWords)`);
-        vscode.window.showInformationMessage(`已规范化配置字: ${before} -> ${after}（已写入 scmcu.configWords${synced.length ? '，并同步 ' + synced.join(', ') : ''}）`);
+        const syncText = synced.length
+            ? vscode.l10n.t(', and synchronized to programming files: {0}', synced.join(', '))
+            : '';
+        if (channel) channel.appendLine(vscode.l10n.t(
+            '[SCMCU] Automatically normalized configuration words (without .scw): {0} -> {1}{2}',
+            before, after, syncText
+        ));
+        vscode.window.showInformationMessage(vscode.l10n.t(
+            'Configuration words normalized: {0} -> {1}{2}',
+            before, after, vscode.l10n.t('saved to scmcu.configWords') + syncText
+        ));
     }
 }
 
@@ -435,10 +480,19 @@ export async function autoNormalizeConfigWords(context: vscode.ExtensionContext)
         for (const s of findScxFiles(root, buildDir)) {
             if (patchScxConfigWords(s, device, resolved)) synced.push(path.basename(s));
         }
-        if (channel) channel.appendLine(`[SCMCU] 自动规范化配置字（无 .scw）: ${fmt(base)} -> ${fmt(resolved)}${synced.length ? '，同步 ' + synced.join(', ') : ''}`);
-        vscode.window.showInformationMessage(`检测到无 .scw（脱离 IDE 工程），已自动规范化配置字: ${fmt(base)} -> ${fmt(resolved)}${synced.length ? '（并同步 ' + synced.join(', ') + '）' : ''}`);
+        const syncText = synced.length
+            ? vscode.l10n.t(', and synchronized to programming files: {0}', synced.join(', '))
+            : '';
+        if (channel) channel.appendLine(vscode.l10n.t(
+            '[SCMCU] Automatically normalized configuration words (without .scw): {0} -> {1}{2}',
+            fmt(base), fmt(resolved), syncText
+        ));
+        vscode.window.showInformationMessage(vscode.l10n.t(
+            'Detected a project without .scw (not an IDE project). Configuration words were normalized automatically: {0} -> {1}{2}',
+            fmt(base), fmt(resolved), syncText
+        ));
     } catch (e) {
-        if (channel) channel.appendLine(`[SCMCU] 自动规范化配置字失败: ${e}`);
+        if (channel) channel.appendLine(vscode.l10n.t('[SCMCU] Automatic configuration word normalization failed: {0}', String(e)));
     }
 }
 
@@ -455,13 +509,13 @@ let progLastText = '';
 
 function startProgrammerWatcher(context: vscode.ExtensionContext, item: vscode.StatusBarItem): void {
     if (process.platform !== 'win32') {
-        item.text = '$(circuit-board) 编程器: 不支持';
-        item.tooltip = 'SCMCU 编程器识别仅支持 Windows（USB HID，VID 0x1209）';
+        item.text = vscode.l10n.t('$(circuit-board) Programmer: Unsupported');
+        item.tooltip = vscode.l10n.t('SCMCU programmer detection is supported only on Windows (USB HID, VID 0x1209).');
         item.show();
         return;
     }
-    item.text = '$(circuit-board) 编程器: 检测中…';
-    item.tooltip = '正在检测 SCMCU 编程器…（点击立即刷新）';
+    item.text = vscode.l10n.t('$(circuit-board) Programmer: Detecting...');
+    item.tooltip = vscode.l10n.t('Detecting SCMCU programmer... (click to refresh)');
     item.show();
     const sync = (focused: boolean): void => {
         if (focused) {
@@ -484,18 +538,33 @@ async function refreshProgrammerStatus(item: vscode.StatusBarItem, verbose: bool
     progBusy = true;
     try {
         const devs = await detectProgrammers();
-        const one = devs.map(d => `${d.name} (VID 0x${d.vidHex} / PID 0x${d.pidHex}${d.mode === 'bootloader' ? '，升级模式' : ''})`).join('、');
+        const one = devs.map(d =>
+            `${localizedProgrammerName(d.name)} (VID 0x${d.vidHex} / PID 0x${d.pidHex}${d.mode === 'bootloader' ? vscode.l10n.t(' (bootloader mode)') : ''})`
+        ).join(', ');
         let text: string;
         let tip: string;
         if (devs.length === 0) {
-            text = '$(circuit-board) 编程器: 未连接';
-            tip = '未检测到 SCMCU 设备。\nWriter 烧录器（VID 0x1209）：WRITER8 LITE / WRITER V8 / WRITER V8 PRO / ICE8 PRO\nICE 仿真器（VID 0x0925）：CMS-ICE6\n\n两种设备都支持「一键编译下载」与「只下载」：\n· Writer 烧录器 → 走 Writer.Core.dll 烧录流程\n· CMS-ICE6 仿真器 → 走 IDE 私有 HID 帧序列（内置 ice6_flash.py）\n点击立即刷新';
+            text = vscode.l10n.t('$(circuit-board) Programmer: Not connected');
+            tip = vscode.l10n.t(
+                'No SCMCU programmer or CMS-ICE6 simulator was detected. Supported Writer programmers: WRITER8 LITE / WRITER V8 / WRITER V8 PRO / ICE8 PRO (VID 0x1209). Supported simulator: CMS-ICE6 (VID 0x0925). Click to refresh.'
+            );
         } else {
-            text = '$(circuit-board) ' + devs.map(d => d.kind === 'ice' ? `${d.name} (仿真器)` : (d.mode === 'bootloader' ? `${d.name} (Boot)` : d.name)).join('、');
+            text = '$(circuit-board) ' + devs.map(d => d.kind === 'ice'
+                ? `${localizedProgrammerName(d.name)} (${vscode.l10n.t('Simulator')})`
+                : (d.mode === 'bootloader' ? `${localizedProgrammerName(d.name)} (${vscode.l10n.t('Boot')})` : localizedProgrammerName(d.name))).join(', ');
             tip = devs.map(d => d.kind === 'ice'
-                ? `已检测到 ICE 仿真器：${d.name}\nUSB VID 0x${d.vidHex} / PID 0x${d.pidHex}\n本插件已支持用它下载：「一键编译下载」与「只下载」均可直接用。\n⚠ 下载时请先关闭 SCMCU IDE —— 它会抢占设备并切断目标板供电。`
-                : `已检测到 SCMCU 编程器：${d.name}\nUSB VID 0x${d.vidHex} / PID 0x${d.pidHex}${d.mode === 'bootloader' ? '\n注意：编程器处于升级(bootloader)模式，请用 Writer 的升级功能刷写固件' : ''}`
-            ).join('\n\n') + '\n点击立即刷新';
+                ? vscode.l10n.t(
+                    'Detected CMS-ICE6 simulator: {0}\nUSB VID 0x{1} / PID 0x{2}\nClose SCMCU IDE before programming because it can take control of the device.',
+                    localizedProgrammerName(d.name), d.vidHex, d.pidHex
+                )
+                : vscode.l10n.t(
+                    'Detected SCMCU programmer: {0}\nUSB VID 0x{1} / PID 0x{2}{3}',
+                    localizedProgrammerName(d.name), d.vidHex, d.pidHex,
+                    d.mode === 'bootloader'
+                        ? `\n${vscode.l10n.t('The programmer is in bootloader mode. Use SCMCU Writer to upgrade its firmware.')}`
+                        : ''
+                )
+            ).join('\n\n') + `\n${vscode.l10n.t('Click to refresh.')}`;
         }
         if (progLastText !== text) { // 内容变化才刷新状态栏，避免闪烁
             progLastText = text;
@@ -503,18 +572,24 @@ async function refreshProgrammerStatus(item: vscode.StatusBarItem, verbose: bool
             item.tooltip = tip;
         }
         if (verbose) {
-            if (channel) channel.appendLine(`[SCMCU] 编程器检测: ${one || '未连接'}`);
-            vscode.window.showInformationMessage(devs.length ? `检测到编程器: ${one}` : '未检测到 SCMCU 编程器（USB VID 0x1209）');
+            if (channel) channel.appendLine(vscode.l10n.t('[SCMCU] Programmer detection: {0}', one || vscode.l10n.t('No SCMCU programmer was detected (USB VID 0x1209)')));
+            vscode.window.showInformationMessage(devs.length
+                ? vscode.l10n.t('Detected programmer: {0}', one)
+                : vscode.l10n.t('No SCMCU programmer was detected (USB VID 0x1209)'));
         }
     } catch (e) {
         progLastText = '';
-        item.text = '$(circuit-board) 编程器: 检测失败';
-        item.tooltip = `编程器检测出错: ${e}\n点击重试`;
-        if (channel) channel.appendLine(`[SCMCU] 编程器检测失败: ${e}`);
-        if (verbose) vscode.window.showErrorMessage(`编程器检测失败: ${e}`);
+        item.text = vscode.l10n.t('$(circuit-board) Programmer: Detection failed');
+        item.tooltip = vscode.l10n.t('Programmer detection error: {0}\nClick to retry.', String(e));
+        if (channel) channel.appendLine(vscode.l10n.t('[SCMCU] Programmer detection failed: {0}', String(e)));
+        if (verbose) vscode.window.showErrorMessage(vscode.l10n.t('Programmer detection error: {0}', String(e)));
     } finally {
         progBusy = false;
     }
+}
+
+function localizedProgrammerName(name: string): string {
+    return name === '未知编程器' ? vscode.l10n.t('Unknown programmer') : name;
 }
 
 function getWorkspaceRoot(): string | undefined {
@@ -533,7 +608,7 @@ async function flashBuildArtifacts(context: vscode.ExtensionContext, root: strin
     const scxPath = path.join(root, buildDir, outName + '.scx');
     const hexPath = path.join(root, buildDir, outName + '.hex');
     if (!fs.existsSync(scxPath) && !fs.existsSync(hexPath)) {
-        vscode.window.showErrorMessage('未找到烧录文件，请先编译: ' + scxPath);
+        vscode.window.showErrorMessage(vscode.l10n.t('Programming file not found (the build should have generated a .scx file): {0}', scxPath));
         return;
     }
     // 脱机烧写次数上限：0=无限（默认），>0=限次。不可强制最小 1，否则会锁成“烧一次即耗尽”。
@@ -542,16 +617,16 @@ async function flashBuildArtifacts(context: vscode.ExtensionContext, root: strin
     const iceScript = context.asAbsolutePath(path.join('flash', 'ice6_flash.py'));
     const r = await flashScx(scxPath, helper, channel, count, false, hexPath, iceScript);
     if (r.ok) {
-        vscode.window.showInformationMessage('下载完成: ' + path.basename(scxPath));
+        vscode.window.showInformationMessage(vscode.l10n.t('One-click programming completed: {0}', path.basename(scxPath)));
     } else {
-        vscode.window.showErrorMessage('下载失败: ' + r.message);
+        vscode.window.showErrorMessage(vscode.l10n.t('Download failed: {0}', r.message));
     }
 }
 
 function workspaceRoot(): string | undefined {
     const root = getWorkspaceRoot();
     if (!root) {
-        vscode.window.showWarningMessage('请先打开包含 .scw 工程的文件夹');
+        vscode.window.showWarningMessage(vscode.l10n.t('Please open a folder containing an .scw project.'));
         return undefined;
     }
     return root;

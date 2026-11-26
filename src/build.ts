@@ -1,13 +1,15 @@
 // build.ts — 编译编排：读 .scw → 调 picc（IDE 完整参数）→ 生成 .scx + 错误诊断
+// build.ts — Build orchestration: Read .scw → Invoke picc (with full IDE parameters) → Generate .scx + provide error diagnostics
 import * as fs from 'fs';
 import * as path from 'path';
 import { spawn } from 'child_process';
 import * as vscode from 'vscode';
-import { findScwFile, parseScw, loadChipParams, listCandidateSources, describeConfig, ScwInfo } from './chip';
+import { findScwFile, parseScw, loadChipParams, listCandidateSources, ScwInfo } from './chip';
 import { findCompilerDir } from './compiler';
 import { hexToScx, calcCfgChecks } from './scx';
 
 // 编译错误/警告诊断集合（Problem 面板）
+// Collection of compilation errors/warnings (Problems panel)
 const diagCollection = vscode.languages.createDiagnosticCollection('scmcu');
 
 export async function buildProject(workspaceRoot: string, channel: vscode.OutputChannel): Promise<boolean> {
@@ -17,34 +19,46 @@ export async function buildProject(workspaceRoot: string, channel: vscode.Output
     let info: ScwInfo;
     if (scw) {
         info = parseScw(scw);
-        if (!info.device) { err(channel, '.scw 中缺少 Device= 行'); return false; }
+        if (!info.device) {
+            err(channel, vscode.l10n.t('The .scw file is missing a Device= entry.'));
+            return false;
+        }
     } else {
         // ---- 脱离 .scw 模式：从插件设置合成工程信息 ----
+        // ---- Moving away from .scw mode: Synthesizing project information from plugin settings ----
         const dev = cfg.get<string>('device', '');
         if (!dev) {
-            err(channel, '未找到 .scw 工程文件，且未配置 scmcu.device。请在「设置 → 扩展 → SCMCU」中填写芯片型号，或放置 .scw 文件。');
+            err(channel, vscode.l10n.t("No .scw project file was found, and scmcu.device is not configured. Enter a chip model in Settings > Extensions > SCMCU, or add a .scw file."));
             return false;
         }
         const cw = (cfg.get<string[]>('configWords', []) || []).map(s => parseInt(s, 16) & 0xFFFF);
         // scmcu.sourceFiles 非空 → 优先使用设置中的源文件清单（顺序与维护通过「源文件管理」面板）
         //                       空 → 走自动扫描（按字母序扫工程下 .c/.asm/.s）
+        // scmcu.sourceFiles: If non-empty, the list of source files specified in the settings is used (in the order maintained via the "Source File Management" panel).
+        //                  If empty, an automatic scan is performed (searching for .c, .asm, and .s files within the project, in alphabetical order).
+
         const overrideSources = (cfg.get<string[]>('sourceFiles', []) || []).filter(s => s && s.trim().length > 0);
         info = { device: dev, sourceFiles: overrideSources, headFiles: [], configWords: cw, optValue: '', warningValue: '' };
         if (overrideSources.length === 0) {
             info.sourceFiles = listCandidateSources(workspaceRoot, []);
         }
-        channel.appendLine(overrideSources.length > 0
-            ? '[SCMCU] ⚠️ 未找到 .scw，启用「脱离 .scw」编译模式（芯片来自 scmcu.device，源文件来自 scmcu.sourceFiles）'
-            : '[SCMCU] ⚠️ 未找到 .scw，启用「脱离 .scw」编译模式（芯片来自 scmcu.device，源文件自动扫描）');
+        channel.appendLine(vscode.l10n.t(
+            overrideSources.length > 0
+                ? '[SCMCU] No .scw file found. Building in .scw-less mode (chip from scmcu.device; source files from scmcu.sourceFiles).'
+                : '[SCMCU] No .scw file found. Building in .scw-less mode (chip from scmcu.device; source files detected automatically).'
+        ));
         if (cw.length === 0) {
-            channel.appendLine('[SCMCU] ⚠️ 未配置 scmcu.configWords，使用芯片默认未编程配置字——烧录前请务必核对硬件选项（振荡器/看门狗/LVR 等）。');
+            channel.appendLine(vscode.l10n.t(
+                '[SCMCU] scmcu.configWords is not configured. Using the chip\'s default unprogrammed configuration words. Verify hardware options (oscillator, watchdog, LVR, etc.) before programming.'
+            ));
         }
     }
 
     const comp = findCompilerDir();
     if (!comp) {
-        err(channel, '未找到编译器 (picc.exe)。请执行 "SCMCU: 配置编译器目录" 或 "SCMCU: 自动检测编译器"。');
-        return false;
+        err(channel, vscode.l10n.t(
+            'Compiler not found (picc.exe). Run "SCMCU: Configure Compiler Directory" or "SCMCU: Detect Compiler Automatically".'
+        )); return false;
     }
     const params = loadChipParams(comp.idePath, info.device);
     const buildDir = path.join(workspaceRoot, cfg.get<string>('buildDir', 'build'));
@@ -57,6 +71,8 @@ export async function buildProject(workspaceRoot: string, channel: vscode.Output
 
     // 按 .scw 的 SourceFile 顺序收集（顺序影响 XC8 psect 分配，必须与 IDE 一致）
     // 查找顺序：用户配置 sourceDirs → 根目录 → 常见目录
+    // Collect files in the order specified in the .scw SourceFile list (this order affects XC8 psect allocation and must match the IDE)
+    // Search order: user-configured sourceDirs → root directory → common directories
     const srcs: string[] = [];
     const missing: string[] = [];
     for (const f of info.sourceFiles) {
@@ -65,18 +81,34 @@ export async function buildProject(workspaceRoot: string, channel: vscode.Output
         else missing.push(f);
     }
     if (srcs.length === 0) {
-        const listed = info.sourceFiles.join(', ') || '(空)';
-        err(channel, `工程中无可用源文件。.scw 的 SourceFile: ${listed}。\n` +
-            `  设置项 scmcu.sourceDirs 当前为: [${sourceDirsCfg.join(', ')}]。\n` +
-            `  解决：在设置里配置正确的源文件目录，或在 .scw 的 SourceFile= 行加子目录前缀（如 src\\init.c）。`);
-        channel.appendLine(`[SCMCU] 缺失的 SourceFile: ${missing.join(', ')}`);
+        const listed = info.sourceFiles.join(', ') || '—';
+
+        const sourceError =
+            'No usable source files were found. .scw SourceFile entries: {0}.\n' +
+            'Current scmcu.sourceDirs setting: [{1}].\n' +
+            'Fix: configure the correct source directory in Settings, or add a subdirectory prefix to the SourceFile= entry in .scw (for example, src\\init.c).';
+
+        err(channel, vscode.l10n.t(
+            sourceError,
+            listed,
+            sourceDirsCfg.join(', ')
+        ));
+
+        channel.appendLine(vscode.l10n.t(
+            '[SCMCU] SourceFile entries not found: {0}',
+            missing.join(', ')
+        ));
         return false;
     }
     if (missing.length > 0) {
-        channel.appendLine(`[SCMCU] ⚠️ 以下 SourceFile 找不到（已跳过）: ${missing.join(', ')}`);
+        channel.appendLine(vscode.l10n.t(
+            '[SCMCU] The following SourceFile entries were not found and were skipped: {0}',
+            missing.join(', ')
+        ));
     }
 
     // 收集 include 路径：①源文件所在目录 ②用户 includeDirs ③工程根目录 ④IDE include
+    // Collect include paths: ① directory containing the source file, ② user-specified includeDirs, ③ project root directory, ④ IDE include paths
     const incDirs: string[] = [];
     for (const s of srcs) {
         const dir = path.dirname(s);
@@ -91,6 +123,8 @@ export async function buildProject(workspaceRoot: string, channel: vscode.Output
 
     // 错误输出格式化为可解析格式（不影响 hex/scx 产物）
     // 注意: 路径必须打头(路径:行:列)，VS Code 输出面板才能自动识别为 Ctrl+点击链接
+    // Format error output into a machine-parsable format (does not affect hex/scx build artifacts)
+    // Note: The path must come first (path:line:column) so that the VS Code output panel can automatically recognize it as a clickable link (Ctrl+click)
     const errFmt = '%f:%l:%c: Error[%n] %s';
     const warnFmt = '%f:%l:%c: Warning[%n] %s';
     const msgFmt = '%f:%l:%c: Info[%n] %s';
@@ -110,20 +144,54 @@ export async function buildProject(workspaceRoot: string, channel: vscode.Output
         ...srcs,
     ];
 
-    channel.appendLine('================ SCMCU 构建 ================');
-    channel.appendLine(`[SCMCU] 工程: ${scw ? path.basename(scw) : '(脱离 .scw 模式)'}`);
-    channel.appendLine(`[SCMCU] 芯片: ${info.device}  ROM: ${params.romWords} word`);
-    channel.appendLine(`[SCMCU] 编译器: ${path.join(comp.binDir, 'picc.exe')}`);
-    channel.appendLine(`[SCMCU] 源文件(${srcs.length}): ${srcs.map(s => path.basename(s)).join(' ')}`);
-    channel.appendLine(`[SCMCU] include: ${incDirs.map(d => path.basename(d) || d).join(' | ')}`);
+    channel.appendLine(vscode.l10n.t(
+        '================ SCMCU Build ================'
+    ));
+
+    const projectName = scw
+        ? path.basename(scw)
+        : `(${vscode.l10n.t('Without .scw mode')})`;
+
+    channel.appendLine(vscode.l10n.t(
+        '[SCMCU] Project: {0}',
+        projectName
+    ));
+
+    channel.appendLine(vscode.l10n.t(
+        '[SCMCU] Chip: {0}  ROM: {1} words',
+        info.device,
+        params.romWords
+    ));
+
+    channel.appendLine(vscode.l10n.t(
+        '[SCMCU] Compiler: {0}',
+        path.join(comp.binDir, 'picc.exe')
+    ));
+
+    channel.appendLine(vscode.l10n.t(
+        '[SCMCU] Source files ({0}): {1}',
+        srcs.length,
+        srcs.map(s => path.basename(s)).join(' ')
+    ));
+
+    channel.appendLine(vscode.l10n.t(
+        '[SCMCU] Include directories: {0}',
+        incDirs.map(d => path.basename(d) || d).join(' | ')
+    ));
+
     channel.appendLine('');
 
     const ok = await runPicc(path.join(comp.binDir, 'picc.exe'), args, workspaceRoot, channel, (lines) => {
         applyDiagnostics(lines, workspaceRoot);
     });
-    if (!ok) { err(channel, '编译失败（见上方 picc 输出，错误已显示在"问题"面板可点击跳转）'); return false; }
-
+    if (!ok) {
+        err(channel, vscode.l10n.t(
+            'Build failed. See the picc output above; errors are also available in the Problems panel and can be clicked to navigate.'
+        ));
+        return false;
+    }
     // ---- 生成 .scx 烧录文件 ----
+    // ---- Generate .scx programming file ----
     try {
         const hexText = fs.readFileSync(hexPath, 'utf-8');
         let words = info.configWords.slice(0, 4);
@@ -131,25 +199,35 @@ export async function buildProject(workspaceRoot: string, channel: vscode.Output
         const scx = hexToScx(hexText, info.device, words, params.romWords, params.hexmcu);
         fs.writeFileSync(scxPath, scx);
         channel.appendLine('');
-        channel.appendLine(`[SCMCU] 配置字: ${words.map(w => w.toString(16).toUpperCase().padStart(4, '0')).join(',')}`);
         // 配置字没人读得懂，紧跟一行 IDE 硬件选项面板的同款文案（WDT=DISABLE / LVR_SEL=1.8V …）
-        const optText = describeConfig(comp.idePath, info.device, words);
-        if (optText) channel.appendLine(`[SCMCU] 硬件选项: ${optText}`);
-        channel.appendLine(`[SCMCU] 烧录文件: ${scxPath} (${scx.length} 字节)`);
+
         // 配置槽数 = 该芯片的配置字数：权威来源 mcu/ini/<chip>.ini 的 CONFIGLENTH+1
         // （.scw 的 config 会用 FFFF 补齐到 4 个，不能作为槽数依据，如 SC8F052=2 槽、SC8P052B=3 槽）
+        // Number of configuration slots = number of configuration words for the given chip: defined as CONFIGLENTH + 1 in the authoritative source file (mcu/ini/<chip>.ini).
+        // (Note: The configuration data in .scw files is padded with FFFF values ​​to a total of 4 entries; therefore, it cannot be used to determine the actual number of slots—e.g., the SC8F052 has 2 slots, while the SC8P052B has 3 slots.)
+
         const { sum, crc } = calcCfgChecks(scx, params.romWords, params.configWordCount || undefined);
         channel.appendLine(`[SCMCU] CfgCRC(Hex) -- 0x${crc.toString(16).toUpperCase().padStart(4, '0')}  CfgSum(Hex) -- 0x${sum.toString(16).toUpperCase().padStart(4, '0')}`);
-        channel.appendLine('[SCMCU] ✅ 构建成功');
-        vscode.window.showInformationMessage(`SCMCU 构建成功: ${path.basename(scxPath)}`);
+        channel.appendLine(vscode.l10n.t(
+            '[SCMCU] Build succeeded'
+        ));
+
+        vscode.window.showInformationMessage(vscode.l10n.t(
+            'SCMCU build succeeded: {0}',
+            path.basename(scxPath)
+        ));
     } catch (e: any) {
-        err(channel, '生成 .scx 失败: ' + e.message);
+        err(channel, vscode.l10n.t(
+            'Failed to generate the .scx file: {0}',
+            e.message
+        ));
         return false;
     }
     return true;
 }
 
 // 解析 SourceFile：带路径按字面拼；不带则按 sourceDirs → 根目录 → 常见目录兜底
+
 export function resolveSource(f: string, workspaceRoot: string, sourceDirs: string[]): string | null {
     if (f.includes('\\') || f.includes('/')) {
         const p = path.join(workspaceRoot, f);
@@ -236,7 +314,10 @@ function runPicc(
         try {
             child = spawn(exe, args, { cwd });
         } catch (e: any) {
-            channel.appendLine('[SCMCU] 启动失败: ' + e.message);
+            channel.appendLine(vscode.l10n.t(
+                '[SCMCU] Failed to start the compiler: {0}',
+                e.message
+            ));
             resolve(false);
             return;
         }
@@ -257,7 +338,12 @@ function runPicc(
         };
         child.stdout?.on('data', onData);
         child.stderr?.on('data', onData);
-        child.on('error', (e) => { channel.appendLine('[SCMCU] 启动失败: ' + e.message); });
+        child.on('error', (e) => {
+            channel.appendLine(vscode.l10n.t(
+                '[SCMCU] Failed to start the compiler: {0}',
+                e.message
+            ));
+        });
         child.on('close', (code) => {
             buf += decoder.decode(); // 冲刷末尾可能跨块的多字节字符
             if (buf.trim()) {
@@ -266,7 +352,11 @@ function runPicc(
                 collected.push(norm);
             }
             channel.appendLine('');
-            channel.appendLine(`[SCMCU] picc 退出码: ${code}`);
+
+channel.appendLine(vscode.l10n.t(
+    '[SCMCU] picc exit code: {0}',
+    code
+));
             if (onLines) onLines(collected);
             resolve(code === 0);
         });
@@ -275,5 +365,7 @@ function runPicc(
 
 function err(channel: vscode.OutputChannel, msg: string): void {
     channel.appendLine('[SCMCU] ❌ ' + msg);
-    vscode.window.showErrorMessage('SCMCU: ' + msg);
+    vscode.window.showErrorMessage(
+        vscode.l10n.t('SCMCU: {0}', msg)
+    );
 }
